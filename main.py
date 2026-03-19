@@ -1,12 +1,12 @@
 import requests
 import time
+import os
 from flask import Flask
 import threading
 
 BOT_TOKEN = "7683490408:AAFz36DxR5zbAwytbg0n6-74z1vZCbvyI1g"
 CHAT_ID = "764321364"
 
-# сюда вставляй до 5 аккаунтов
 users = [
     "khaby.lame",
     "username2",
@@ -17,7 +17,7 @@ users = [
 
 sent = set()
 
-# --- WEB СЕРВЕР (АНТИСОН) ---
+# --- WEB СЕРВЕР (АНТИСОН ДЛЯ RENDER) ---
 app = Flask(__name__)
 
 @app.route("/")
@@ -25,47 +25,43 @@ def home():
     return "Бот работает!"
 
 def run_web():
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
 
 # --- ОТПРАВКА СООБЩЕНИЯ ---
 def send_message(text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": text})
-
-# --- ОТПРАВКА ВИДЕО ---
-def send_video(video_url):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo"
-    requests.post(url, data={"chat_id": CHAT_ID, "video": video_url})
+    try:
+        requests.post(url, data={"chat_id": CHAT_ID, "text": text})
+    except:
+        pass
 
 # --- ПРОВЕРКА ВИДЕО ---
-def get_video_link(user):
+def get_video(user):
     url = f"https://www.tiktok.com/@{user}"
     headers = {"User-Agent": "Mozilla/5.0"}
 
     try:
-        r = requests.get(url, headers=headers)
+        r = requests.get(url, headers=headers, timeout=10)
         if r.status_code == 200:
-            # простая проверка (можно улучшить позже)
             if "video" in r.text:
                 return f"https://www.tiktok.com/@{user}"
     except:
-        pass
+        return None
 
     return None
 
-# --- ЗАПУСК ВЕБ-СЕРВЕРА ---
+# --- ЗАПУСК СЕРВЕРА ---
 threading.Thread(target=run_web).start()
 
 # --- ОСНОВНОЙ ЦИКЛ ---
 while True:
     for user in users:
-        video = get_video_link(user)
+        video = get_video(user)
 
         if video and video not in sent:
             send_message(f"🔥 Новое видео у @{user}")
             send_message(video)
-            # если найдём прямую ссылку — будет отправлять как видео
-            # send_video(video)
 
             sent.add(video)
 
