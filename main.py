@@ -7,17 +7,15 @@ from threading import Thread
 BOT_TOKEN = "7683490408:AAFz36DxR5zbAwytbg0n6-74z1vZCbvyI1g"
 CHAT_ID = "764321364"
 
-# 🔥 активные, но не супер-миллионники
 users = [
     "lifehackdailyy",
     "brainfood.ig",
     "satisfyingclipss",
     "dailyyfacts",
-    "wowthingss",
-    "oddlysatisfying.video"
+    "wowthingss"
 ]
 
-sent = set()
+last_videos = {}
 
 app = Flask(__name__)
 
@@ -25,49 +23,51 @@ app = Flask(__name__)
 def home():
     return "Бот работает!"
 
-# --- отправка видео ---
-def send_video(video_url):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo"
+# --- отправка видео файлом ---
+def send_video_file(video_url):
     try:
-        requests.post(url, data={
-            "chat_id": CHAT_ID,
-            "video": video_url
-        })
+        video = requests.get(video_url, stream=True, timeout=20)
+
+        if video.status_code == 200:
+            files = {"video": video.raw}
+            requests.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo",
+                data={"chat_id": CHAT_ID},
+                files=files
+            )
     except:
         pass
 
-# --- получение видео без водяного знака ---
-def get_video(user):
+# --- получаем последнее видео ---
+def get_latest_video(user):
     try:
-        tiktok_url = f"https://www.tiktok.com/@{user}"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(tiktok_url, headers=headers)
-
-        if r.status_code != 200:
-            return None
-
         api = "https://tikwm.com/api/"
-        res = requests.post(api, data={"url": tiktok_url})
+        url = f"https://www.tiktok.com/@{user}"
 
+        res = requests.post(api, data={"url": url})
         data = res.json()
 
-        if "data" in data and "play" in data["data"]:
-            return data["data"]["play"]
+        if "data" in data:
+            video_url = data["data"]["play"]
+            video_id = data["data"]["id"]
+
+            return video_id, video_url
 
     except:
-        return None
+        return None, None
 
-    return None
+    return None, None
 
-# --- бот ---
+# --- основной бот ---
 def run_bot():
     while True:
         for user in users:
-            video = get_video(user)
+            video_id, video_url = get_latest_video(user)
 
-            if video and video not in sent:
-                send_video(video)
-                sent.add(video)
+            if video_id:
+                if user not in last_videos or last_videos[user] != video_id:
+                    send_video_file(video_url)
+                    last_videos[user] = video_id
 
         time.sleep(120)
 
