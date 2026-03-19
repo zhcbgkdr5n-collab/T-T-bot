@@ -1,6 +1,7 @@
 import requests
 import time
 import os
+import json
 from flask import Flask
 from threading import Thread
 
@@ -15,7 +16,14 @@ users = [
     "wowthingss"
 ]
 
-last_videos = {}
+FILE_NAME = "videos.json"
+
+# --- загрузка памяти ---
+if os.path.exists(FILE_NAME):
+    with open(FILE_NAME, "r") as f:
+        last_videos = json.load(f)
+else:
+    last_videos = {}
 
 app = Flask(__name__)
 
@@ -23,53 +31,72 @@ app = Flask(__name__)
 def home():
     return "Бот работает!"
 
-# --- отправка видео файлом ---
-def send_video_file(video_url):
+# --- сохранить память ---
+def save_data():
+    with open(FILE_NAME, "w") as f:
+        json.dump(last_videos, f)
+
+# --- отправка видео ---
+def send_video(video_url):
     try:
         video = requests.get(video_url, stream=True, timeout=20)
-
         if video.status_code == 200:
             files = {"video": video.raw}
             requests.post(
                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo",
                 data={"chat_id": CHAT_ID},
-                files=files
+                files=files,
+                timeout=20
             )
     except:
         pass
 
-# --- получаем последнее видео ---
+# --- получить видео ---
 def get_latest_video(user):
-    try:
-        api = "https://tikwm.com/api/"
-        url = f"https://www.tiktok.com/@{user}"
+    for _ in range(3):
+        try:
+            api = "https://tikwm.com/api/"
+            url = f"https://www.tiktok.com/@{user}"
 
-        res = requests.post(api, data={"url": url})
-        data = res.json()
+            res = requests.post(api, data={"url": url}, timeout=15)
+            data = res.json()
 
-        if "data" in data:
-            video_url = data["data"]["play"]
-            video_id = data["data"]["id"]
+            if "data" in data:
+                return data["data"]["id"], data["data"]["play"]
 
-            return video_id, video_url
-
-    except:
-        return None, None
+        except:
+            time.sleep(2)
 
     return None, None
 
-# --- основной бот ---
+# --- основной цикл ---
+def bot_loop():
+    while True:
+        try:
+            for user in users:
+                video_id, video_url = get_latest_video(user)
+
+                if video_id:
+                    if user not in last_videos or last_videos[user] != video_id:
+                        send_video(video_url)
+                        last_videos[user] = video_id
+                        save_data()
+
+                time.sleep(2)
+
+            time.sleep(60)
+
+        except Exception as e:
+            print("Ошибка:", e)
+            time.sleep(5)
+
+# --- запуск ---
 def run_bot():
     while True:
-        for user in users:
-            video_id, video_url = get_latest_video(user)
-
-            if video_id:
-                if user not in last_videos or last_videos[user] != video_id:
-                    send_video_file(video_url)
-                    last_videos[user] = video_id
-
-        time.sleep(120)
+        try:
+            bot_loop()
+        except:
+            time.sleep(5)
 
 if __name__ == "__main__":
     Thread(target=run_bot).start()
