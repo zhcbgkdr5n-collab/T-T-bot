@@ -2,6 +2,7 @@ import requests
 import time
 import os
 import json
+import re
 from flask import Flask
 from threading import Thread
 
@@ -41,118 +42,118 @@ def send_message(text):
 def load_data():
     if os.path.exists(FILE_NAME):
         try:
-            with open(FILE_NAME, "r", encoding="utf-8") as f:
+            with open(FILE_NAME, "r") as f:
                 return json.load(f)
-        except Exception as e:
-            log(f"load_data error: {e}")
+        except:
+            pass
     return {}
 
 def save_data(data):
-    try:
-        with open(FILE_NAME, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        log(f"save_data error: {e}")
+    with open(FILE_NAME, "w") as f:
+        json.dump(data, f)
 
 last_videos = load_data()
 
-def send_video(video_url, caption=""):
+# --- отправка видео ---
+def send_video(video_url, user):
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo",
             data={
                 "chat_id": CHAT_ID,
                 "video": video_url,
-                "caption": caption[:1000]
+                "caption": f"🔥 @{user}"
             },
             timeout=60
         )
-        log(f"send_video status: {r.status_code}, response: {r.text[:300]}")
+        log(f"send_video: {r.status_code}")
         return r.status_code == 200
     except Exception as e:
         log(f"send_video error: {e}")
         return False
 
+# --- новый парсер ---
 def get_latest_video(user):
-    """
-    Пытаемся получить последнее видео через tikwm.
-    Если API не отдал id/play, вернём None.
-    """
-    profile_url = f"https://www.tiktok.com/@{user}"
+    try:
+        url = f"https://www.tiktok.com/@{user}"
+        headers = {"User-Agent": "Mozilla/5.0"}
 
-    for attempt in range(3):
-        try:
-            r = requests.post(
-                "https://tikwm.com/api/",
-                data={"url": profile_url},
-                timeout=25
-            )
-            log(f"{user} tikwm status: {r.status_code}")
-            data = r.json()
-            log(f"{user} tikwm response keys: {list(data.keys())}")
+        r = requests.get(url, headers=headers, timeout=15)
 
-            if isinstance(data, dict) and "data" in data and isinstance(data["data"], dict):
-                item = data["data"]
-                video_id = item.get("id")
-                play_url = item.get("play")
+        if r.status_code != 200:
+            return None, None
 
-                if video_id and play_url:
-                    return video_id, play_url
+        text = r.text
 
-        except Exception as e:
-            log(f"{user} get_latest_video attempt {attempt+1} error: {e}")
+        ids = re.findall(r'"id":"(\d+)"', text)
 
-        time.sleep(2)
+        if not ids:
+            return None, None
+
+        video_id = ids[0]
+
+        api = "https://tikwm.com/api/"
+        res = requests.post(api, data={
+            "url": f"https://www.tiktok.com/@{user}/video/{video_id}"
+        }, timeout=15)
+
+        data = res.json()
+
+        if "data" in data:
+            return video_id, data["data"]["play"]
+
+    except Exception as e:
+        log(f"парсинг ошибка: {e}")
 
     return None, None
 
+# --- основной цикл ---
 def bot_loop():
-    send_message("✅ Бот запущен и начал проверку аккаунтов")
+    send_message("🚀 Бот запущен")
 
     while True:
         try:
             for user in users:
                 log(f"checking @{user}")
+
                 video_id, video_url = get_latest_video(user)
 
-                if not video_id or not video_url:
-                    log(f"no video data for @{user}")
+                if not video_id:
+                    log(f"нет видео у @{user}")
                     continue
 
-                old_video_id = last_videos.get(user)
+                if last_videos.get(user) != video_id:
+                    log(f"новое видео у @{user}")
 
-                if old_video_id != video_id:
-                    log(f"new video for @{user}: {video_id}")
-                    ok = send_video(video_url, caption=f"@{user}")
+                    ok = send_video(video_url, user)
 
                     if ok:
                         last_videos[user] = video_id
                         save_data(last_videos)
-                        log(f"saved new video id for @{user}: {video_id}")
+                        log("сохранили")
                     else:
-                        send_message(f"⚠️ Не удалось отправить видео от @{user}")
+                        send_message(f"❌ ошибка отправки @{user}")
 
                 else:
-                    log(f"no new video for @{user}")
+                    log(f"без изменений @{user}")
 
                 time.sleep(2)
 
             time.sleep(CHECK_INTERVAL)
 
         except Exception as e:
-            log(f"bot_loop fatal error: {e}")
-            send_message(f"❌ Ошибка в цикле бота: {e}")
+            log(f"ошибка цикла: {e}")
             time.sleep(5)
 
 def run_bot():
     while True:
         try:
             bot_loop()
-        except Exception as e:
-            log(f"run_bot restart error: {e}")
+        except:
             time.sleep(5)
 
 if __name__ == "__main__":
-    Thread(target=run_bot, daemon=True).start()
+    Thread(target=run_bot).start()
+
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
