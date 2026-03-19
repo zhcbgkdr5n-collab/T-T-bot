@@ -7,8 +7,14 @@ from threading import Thread
 BOT_TOKEN = "7683490408:AAFz36DxR5zbAwytbg0n6-74z1vZCbvyI1g"
 CHAT_ID = "764321364"
 
+# 🔥 активные, но не супер-миллионники
 users = [
-    "khaby.lame"
+    "lifehackdailyy",
+    "brainfood.ig",
+    "satisfyingclipss",
+    "dailyyfacts",
+    "wowthingss",
+    "oddlysatisfying.video"
 ]
 
 sent = set()
@@ -30,10 +36,9 @@ def send_video(video_url):
     except:
         pass
 
-# --- получить ссылку на видео БЕЗ ВОДЯНКИ ---
+# --- получение видео без водяного знака ---
 def get_video(user):
     try:
-        # берём страницу
         tiktok_url = f"https://www.tiktok.com/@{user}"
         headers = {"User-Agent": "Mozilla/5.0"}
         r = requests.get(tiktok_url, headers=headers)
@@ -41,7 +46,6 @@ def get_video(user):
         if r.status_code != 200:
             return None
 
-        # используем API
         api = "https://tikwm.com/api/"
         res = requests.post(api, data={"url": tiktok_url})
 
