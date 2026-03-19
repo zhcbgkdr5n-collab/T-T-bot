@@ -1,84 +1,72 @@
 import requests
 import time
-import re
 from flask import Flask
 import threading
 
 BOT_TOKEN = "7683490408:AAFz36DxR5zbAwytbg0n6-74z1vZCbvyI1g"
 CHAT_ID = "764321364"
 
+# сюда вставляй до 5 аккаунтов
 users = [
     "khaby.lame",
-    "therock",
-    "zachking",
-    "bellapoarch",
-    "mrbeast"
+    "username2",
+    "username3",
+    "username4",
+    "username5"
 ]
 
 sent = set()
 
-# 🔥 Flask сервер (антисон)
+# --- WEB СЕРВЕР (АНТИСОН) ---
 app = Flask(__name__)
 
-@app.route('/')
+@app.route("/")
 def home():
     return "Бот работает!"
 
 def run_web():
-    app.run(host='0.0.0.0', port=10000)
+    app.run(host="0.0.0.0", port=10000)
 
-# 🔥 Telegram
+# --- ОТПРАВКА СООБЩЕНИЯ ---
+def send_message(text):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    requests.post(url, data={"chat_id": CHAT_ID, "text": text})
+
+# --- ОТПРАВКА ВИДЕО ---
 def send_video(video_url):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo"
+    requests.post(url, data={"chat_id": CHAT_ID, "video": video_url})
+
+# --- ПРОВЕРКА ВИДЕО ---
+def get_video_link(user):
+    url = f"https://www.tiktok.com/@{user}"
+    headers = {"User-Agent": "Mozilla/5.0"}
+
     try:
-        requests.post(url, data={
-            "chat_id": CHAT_ID,
-            "video": video_url
-        })
+        r = requests.get(url, headers=headers)
+        if r.status_code == 200:
+            # простая проверка (можно улучшить позже)
+            if "video" in r.text:
+                return f"https://www.tiktok.com/@{user}"
     except:
         pass
 
-def get_videos(user):
-    url = f"https://www.tiktok.com/@{user}"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    
-    try:
-        r = requests.get(url, headers=headers, timeout=10)
-        html = r.text
+    return None
 
-        ids = re.findall(r'"id":"(\d+)"', html)
+# --- ЗАПУСК ВЕБ-СЕРВЕРА ---
+threading.Thread(target=run_web).start()
 
-        return [f"https://www.tiktok.com/@{user}/video/{vid}" for vid in ids[:5]]
-    except:
-        return []
+# --- ОСНОВНОЙ ЦИКЛ ---
+while True:
+    for user in users:
+        video = get_video_link(user)
 
-def get_no_watermark(video_url):
-    try:
-        api = f"https://tikwm.com/api/?url={video_url}"
-        r = requests.get(api).json()
-        return r["data"]["play"]
-    except:
-        return None
+        if video and video not in sent:
+            send_message(f"🔥 Новое видео у @{user}")
+            send_message(video)
+            # если найдём прямую ссылку — будет отправлять как видео
+            # send_video(video)
 
-# 🔥 основной цикл
-def bot_loop():
-    while True:
-        for user in users:
-            videos = get_videos(user)
+            sent.add(video)
 
-            for video in videos:
-                if video not in sent:
-                    no_wm = get_no_watermark(video)
-
-                    if no_wm:
-                        send_video(no_wm)
-                        sent.add(video)
-
-            time.sleep(3)
-
-        time.sleep(60)
-
-# 🔥 запуск всего
-if __name__ == "__main__":
-    threading.Thread(target=run_web).start()
-    bot_loop()
+    time.sleep(60)
